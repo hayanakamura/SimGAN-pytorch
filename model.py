@@ -92,6 +92,7 @@ class D(nn.Module):
         return x
 
 
+
 def adversarial_training()
 
 img_path='mynumber.png'
