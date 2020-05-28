@@ -9,6 +9,7 @@ from torchvision import datasets, models, transforms
 import torch.optim as optim
 from PIL import Image
 #from dataset import synth_images, real_images
+#from loss_func import self_reg_loss, local_adv_loss
 
 import numpy as np
 
@@ -124,20 +125,24 @@ def train_fn(net, loader):
 #R_output = R(image)
 #D_output = D(R_output)
 
-RefNet = R()
 DisNet = D()
-loss = 
+
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 print('---Train Refiner Network 1000 times---')
 synth_images = synth_images(imgdir,bs)
 
+RefNet = R()
+optimizer = optim.SGD(RefNet.parameters(), lr=0.001)
+loss =
+RefNet.to(device)
 for _ in range(1000):
     for images in synth_images:
         images = images.to(device)
         RefNet.train()
         optimizer.zero_grad()
         R_output = RefNet(images)
-        loss =
+        loss = self_reg_loss(R_output, )
 
 img_path='mynumber.png'
 image=Image.open(img_path)
