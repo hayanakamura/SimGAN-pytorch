@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torchvision import datasets, models, transforms
 import torch.optim as optim
 from PIL import Image
+#from dataset import synth_images, real_images
 
 import numpy as np
 
@@ -30,7 +31,7 @@ log_interval = 100
 
 
 
-class resnet_block(nn.Module):
+class R(nn.Module):
     """
      A ResNet block with two `nb_kernel_rows` x `nb_kernel_cols` convolutional layers,
      each with `nb_features` feature maps.
@@ -38,32 +39,28 @@ class resnet_block(nn.Module):
      :param input_features: Input tensor to ResNet block.
      :return: Output tensor from ResNet block.
     """
-    def __init__(self,input_features=64, nb_features=64, kernel_size=3):
+    def __init__(self):
         super(resnet_block, self).__init__()
-        self.conv1 = nn.Conv2d(input_features, nb_features, kernel_size,padding=1)
+        self.conv1 = nn.Conv2d(1, 64, 3,padding=1)
         self.relu = nn.ReLU()
-        self.conv2 = nn.Conv2d(input_features, nb_features, kernel_size,padding=1)
-
+        self.conv2 = nn.Conv2d(64, 64, 3,padding=1)
+        self.relu = nn.ReLU()
+        self.conv3 = nn.Conv2d(64, 64, 3,padding=1)
+        self.conv4 = nn.Conv2d(64,1,1)
+        self.tanh = nn.Tanh()
 
 
     def forward(self,x):
         x = self.conv1(x)
         x = self.relu(x)
-        x = self.conv2(x)
-        x = self.relu(x)
+        for _ in range(4):
+            x = self.conv2(x)
+            x = self.relu(x)
+            x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.tanh(x)
 
         return x
-
-def R(net,input_image_tensor):
-    x = nn.Conv2d(1, 64, 3,padding=1)(input_image_tensor)
-    x = nn.ReLU()(x)
-    net.train()
-    for _ in range(4):
-        x = net(x)
-
-    x = nn.Conv2d(64, img_channels, 1)(x)
-
-    return nn.Tanh()(x)
 
 
 class D(nn.Module):
@@ -91,9 +88,56 @@ class D(nn.Module):
         x = self.softmax(x)
         return x
 
+def train_fn(net, loader):
+    running_loss = 0
+    runnning_corrects = 0
+    preds_for_acc = []
+    pbar = tqdm(total = len(loader), desc='Training')
+
+    for _, (images, labels) in enumerate(loader):
+
+        images = images.to(device)
+        net.train()
+        optimizer.zero_grad()
+        predictions = net(images)
+        print(predictions,labels)
+        loss = loss_fn(predictions, labels)
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+
+        running_loss += loss.item()*labels.shape[0]
+        labels_for_acc = np.concatenate((labels_for_acc, labels.cpu().numpy()), 0)
+        preds = np.argmax(predictions.cpu().detach().numpy(), 1)
+        preds_for_acc = np.concatenate((preds_for_acc, preds), 0)
+        pred = torch.from_numpy(preds)
+        runnning_corrects += torch.sum(pred==labels)
+        pbar.update()
+
+    #accuracy = accuracy_score(labels_for_acc, preds_for_acc)
+    accuracy = runnning_corrects.item() / dataset_sizes['train']
+
+    pbar.close()
+    return running_loss/dataset_sizes['train'], accuracy
 
 
-def adversarial_training()
+#R_output = R(image)
+#D_output = D(R_output)
+
+RefNet = R()
+DisNet = D()
+loss = 
+
+print('---Train Refiner Network 1000 times---')
+synth_images = synth_images(imgdir,bs)
+
+for _ in range(1000):
+    for images in synth_images:
+        images = images.to(device)
+        RefNet.train()
+        optimizer.zero_grad()
+        R_output = RefNet(images)
+        loss =
 
 img_path='mynumber.png'
 image=Image.open(img_path)
