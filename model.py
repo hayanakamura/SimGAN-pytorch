@@ -89,60 +89,88 @@ class D(nn.Module):
         x = self.softmax(x)
         return x
 
-def train_fn(net, loader):
-    running_loss = 0
-    runnning_corrects = 0
-    preds_for_acc = []
-    pbar = tqdm(total = len(loader), desc='Training')
-
-    for _, (images, labels) in enumerate(loader):
-
-        images = images.to(device)
-        net.train()
-        optimizer.zero_grad()
-        predictions = net(images)
-        print(predictions,labels)
-        loss = loss_fn(predictions, labels)
-        loss.backward()
-        optimizer.step()
-        scheduler.step()
-
-        running_loss += loss.item()*labels.shape[0]
-        labels_for_acc = np.concatenate((labels_for_acc, labels.cpu().numpy()), 0)
-        preds = np.argmax(predictions.cpu().detach().numpy(), 1)
-        preds_for_acc = np.concatenate((preds_for_acc, preds), 0)
-        pred = torch.from_numpy(preds)
-        runnning_corrects += torch.sum(pred==labels)
-        pbar.update()
-
-    #accuracy = accuracy_score(labels_for_acc, preds_for_acc)
-    accuracy = runnning_corrects.item() / dataset_sizes['train']
-
-    pbar.close()
-    return running_loss/dataset_sizes['train'], accuracy
 
 
-#R_output = R(image)
-#D_output = D(R_output)
 
-DisNet = D()
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+ref_loss=[]
+dis_loss=[]
+
 
 print('---Train Refiner Network 1000 times---')
 synth_images = synth_images(imgdir,bs)
 
 RefNet = R()
-optimizer = optim.SGD(RefNet.parameters(), lr=0.001)
-loss =
+optimizer_ref = optim.SGD(RefNet.parameters(), lr=0.001)
 RefNet.to(device)
-for _ in range(1000):
-    for images in synth_images:
-        images = images.to(device)
-        RefNet.train()
-        optimizer.zero_grad()
-        R_output = RefNet(images)
-        loss = self_reg_loss(R_output, )
+running_loss = 0
+for i in range(1000):
+    synth_batch = iter(synth_images).next()
+    synth_batch = synth_batch.to(device)
+    RefNet.train()
+    optimizer_res.zero_grad()
+    R_output = RefNet(synth_batch)
+    r_loss_ref = self_reg_loss(n, R_output, images)
+    r_loss_ref.backward()
+    optimizer.step()
+
+    running_loss += loss.item()
+    ref_loss.append(running_loss)
+    if i % 50:
+        print('Ref loss:{} ,Epochs:{} '.format(running_loss, i))
+
+
+
+
+y_real = np.array([[[1.0, 0.0]] * discriminator_model_output_shape[1]] * batch_size)
+y_refined = np.array([[[0.0, 1.0]] * discriminator_model_output_shape[1]] * batch_size)
+assert y_real.shape == (batch_size, discriminator_model_output_shape[1], 2)
+print('---Train Discriminator Network 200 times---')
+synth_images = synth_images(imgdir,bs)
+real_images = real_images(imgdir,bs)
+
+DisNet = D()
+optimizer_dis = optim.SGD(DisNet.parameters(), lr=0.001)
+DisNet.to(device)
+running_loss = 0
+for _ in range(200):
+    RefNet.eval()
+    DisNet.train()
+    optimizer_dis.zero_grad()
+
+    synth_batch = iter(synth_images).next()
+    synth_batch = synth_batch.to(device)
+    real_batch = iter(real_images).next()
+    real_batch = real_batch.to(device)
+
+    synth_batch = synth_batch.to(device)
+    real_batch = real_batch.to(device)
+
+    D_real_out = DisNet(real_batch)
+    d_loss_real = local_adv_loss(D_real_out, y_real)
+
+    ref_batch = RefNet(synth_batch)
+    D_ref_out = DisNet(ref_batch)
+    d_loss_ref = local_adv_loss(D_ref_out, y_ref)
+
+
+    optimizer_dis.zero_grad()
+    optimizer_dis.step()
+
+    running_loss += loss.item()
+    dis_loss.append(running_loss)
+    if i % 10:
+        print('Dis loss:{} ,Epochs:{} '.format(running_loss, i))
+
+K_g =
+K_d =
+
+
+for i in range():
+
+    for _ in range(K_g):
 
 img_path='mynumber.png'
 image=Image.open(img_path)
