@@ -110,14 +110,14 @@ for i in range(1000):
     synth_batch = iter(synth_images).next()
     synth_batch = synth_batch.to(device)
     RefNet.train()
-    optimizer_res.zero_grad()
+    optimizer_ref.zero_grad()
     R_output = RefNet(synth_batch)
     r_loss_ref = self_reg_loss(n, R_output, images)
     r_loss_ref.backward()
-    optimizer.step()
+    optimizer_ref.step()
 
     running_loss += loss.item()
-    ref_loss.append(running_loss)
+#    ref_loss.append(running_loss)
     if i % 50:
         print('Ref loss:{} ,Epochs:{} '.format(running_loss, i))
 
@@ -149,18 +149,18 @@ for _ in range(200):
     real_batch = real_batch.to(device)
 
     D_real_out = DisNet(real_batch)
-    d_loss_real = local_adv_loss(D_real_out, y_real)
+    D_loss_real = local_adv_loss(D_real_out, y_real)
 
     ref_batch = RefNet(synth_batch)
     D_ref_out = DisNet(ref_batch)
-    d_loss_ref = local_adv_loss(D_ref_out, y_ref)
+    D_loss_ref = local_adv_loss(D_ref_out, y_ref)
 
-
-    optimizer_dis.zero_grad()
+    D_loss = D_loss_ref + D_loss_real
+    D_loss.backward()
     optimizer_dis.step()
 
     running_loss += loss.item()
-    dis_loss.append(running_loss)
+#    dis_loss.append(running_loss)
     if i % 10:
         print('Dis loss:{} ,Epochs:{} '.format(running_loss, i))
 
@@ -168,9 +168,33 @@ K_g =
 K_d =
 
 
-for i in range():
+for i in range(T):
 
     for _ in range(K_g):
+
+        synth_batch = iter(synth_images).next()
+        synth_batch = synth_batch.to(device)
+        RefNet.train()
+        optimizer_ref.zero_grad()
+        R_output = RefNet(synth_batch)
+        r_loss_ref = self_reg_loss(n, R_output, images)
+        r_loss_ref.backward()
+        optimizer_ref.step()
+
+        running_loss += loss.item()
+
+    for _ in range(K_d):
+
+        synth_batch = iter(synth_images).next()
+        synth_batch = synth_batch.to(device)
+        real_batch = iter(real_images).next()
+        real_batch = real_batch.to(device)
+
+        D_real_out = DisNet(real_batch)
+        D_loss_real = local_adv_loss(D_real_out, y_real)
+
+
+
 
 img_path='mynumber.png'
 image=Image.open(img_path)
