@@ -1,7 +1,7 @@
 import numpy as np
 
-class Buffer():
-    def __init__(self, rng):
+class Buffer(object):
+    def __init__(self, rng, config):
         self.rng = rng
         self.buffer_size = config.buffer_size
         self.batch_size = config.batch_size
@@ -22,10 +22,10 @@ class Buffer():
             self.data[self.idx:self.idx+bs] = batchs
             self.idx += bs
 
-    def get_from_buffer(self,):
+    def get_from_buffer(self,n=None):
         assert  self.idx > n, ''
         if n is None:
             n = self.batch_size//2
         random_idx = self.rng.choice(self.idx, n)
-        
+
         return self.data[random_idx]
