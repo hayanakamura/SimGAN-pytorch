@@ -112,6 +112,8 @@ for i in range(1000):
     RefNet.train()
     optimizer_ref.zero_grad()
     R_output = RefNet(synth_batch)
+    if i > 800:
+        add_to_buffer(R_output.cpu().data.numpy())
     r_loss_ref = self_reg_loss(n, R_output, images)
     r_loss_ref.backward()
     optimizer_ref.step()
@@ -148,11 +150,16 @@ for _ in range(200):
     synth_batch = synth_batch.to(device)
     real_batch = real_batch.to(device)
 
-    D_real_out = DisNet(real_batch)
+    ref_batch = RefNet(synth_batch)
+
+    batch_from_buffer = get_from_buffer()
+    batch_from_buffer = torch.from_numpy(batch_from_buffer)
+    ref_batch[:batch_size//2] = batch_from_buffer
+
+    D_real_out = DisNet(real_batch).view(-1,2)
     D_loss_real = local_adv_loss(D_real_out, y_real)
 
-    ref_batch = RefNet(synth_batch)
-    D_ref_out = DisNet(ref_batch)
+    D_ref_out = DisNet(ref_batch).view(-1,2)
     D_loss_ref = local_adv_loss(D_ref_out, y_ref)
 
     D_loss = D_loss_ref + D_loss_real
@@ -190,8 +197,23 @@ for i in range(T):
         real_batch = iter(real_images).next()
         real_batch = real_batch.to(device)
 
-        D_real_out = DisNet(real_batch)
+        Refnet.eval()
+        ref_batch = RefNet(synth_batch)
+
+        batch_from_buffer = get_from_buffer()
+        add_to_buffer(synth_batch.cpu().data.numpy())
+        #numpy <--> torch.tensor
+        batch_from_buffer = torch.from_numpy(batch_from_buffer)
+        ref_batch[:bs//2] = batch_from_buffer
+
+        D_real_out = DisNet(real_batch).view(-1,2)
         D_loss_real = local_adv_loss(D_real_out, y_real)
+
+        D_ref_out = DisNet(ref_batch).view(-1,2)
+        D_loss_ref = local_adv_loss(ref_batch, y_ref)
+        D_loss = D_loss_ref + D_loss_real
+        D_loss.backward()
+        optimizer_dis.step()
 
 
 
