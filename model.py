@@ -112,9 +112,9 @@ for i in range(1000):
     RefNet.train()
     optimizer_ref.zero_grad()
     R_output = RefNet(synth_batch)
-    if i > 800:
+    if i > 900:
         add_to_buffer(R_output.cpu().data.numpy())
-    r_loss_ref = self_reg_loss(n, R_output, images)
+    r_loss_ref = self_reg_loss(n, R_output, synth_images)
     r_loss_ref.backward()
     optimizer_ref.step()
 
@@ -184,6 +184,7 @@ for i in range(T):
         RefNet.train()
         optimizer_ref.zero_grad()
         R_output = RefNet(synth_batch)
+        add_to_buffer(R_output.cpu().data.numpy())
         r_loss_ref = self_reg_loss(n, R_output, images)
         r_loss_ref.backward()
         optimizer_ref.step()
