@@ -41,7 +41,7 @@ class R(nn.Module):
      :return: Output tensor from ResNet block.
     """
     def __init__(self):
-        super(resnet_block, self).__init__()
+        super(R, self).__init__()
         self.conv1 = nn.Conv2d(1, 64, 3,padding=1)
         self.relu = nn.ReLU()
         self.conv2 = nn.Conv2d(64, 64, 3,padding=1)
@@ -71,6 +71,7 @@ class D(nn.Module):
     :return: Output tensor that corresponds to the probability of whether an image is real or refined.
     """
     def __init__(self,):
+        super(D, self).__init__()
         self.conv1 = nn.Conv2d(1, 96, 3, stride=2, padding=1)
         self.conv2 = nn.Conv2d(96, 64, 3, stride=2, padding=1)
         self.maxpool2d = nn.MaxPool2d(3, stride=1)
@@ -97,26 +98,44 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 ref_loss=[]
 dis_loss=[]
+#y_real = np.array([[[1.0, 0.0]] * discriminator_model_output_shape[1]] * batch_size)
+#y_refined = np.array([[[0.0, 1.0]] * discriminator_model_output_shape[1]] * batch_size)
 
 
 print('---Train Refiner Network 1000 times---')
 synth_images = synth_images(imgdir,bs)
 
 RefNet = R()
+DisNet = D()
+
 optimizer_ref = optim.SGD(RefNet.parameters(), lr=0.001)
 RefNet.to(device)
+DisNet.to(device)
 running_loss = 0
+R_loss = 0
+D_loss = 0
 for i in range(1000):
     synth_batch = iter(synth_images).next()
     synth_batch = synth_batch.to(device)
     RefNet.train()
     optimizer_ref.zero_grad()
     R_output = RefNet(synth_batch)
+    DisNet.eval()
+    D_real_out = DisNet(R_output)
     if i > 900:
         add_to_buffer(R_output.cpu().data.numpy())
-    r_loss_ref = self_reg_loss(n, R_output, synth_images)
-    r_loss_ref.backward()
+    r_loss_ref = self_reg_loss(n, R_output, synth_batch)
+    r_loss_realism = local_adv_loss(D_real_out, real_label(D_real_out))
+
+    R_loss = (r_loss_ref.item() + r_loss_realism.item())
+
+    R_loss.backward()
     optimizer_ref.step()
+
+
+
+
+
 
     running_loss += loss.item()
 #    ref_loss.append(running_loss)
@@ -126,17 +145,14 @@ for i in range(1000):
 
 
 
-y_real = np.array([[[1.0, 0.0]] * discriminator_model_output_shape[1]] * batch_size)
-y_refined = np.array([[[0.0, 1.0]] * discriminator_model_output_shape[1]] * batch_size)
 assert y_real.shape == (batch_size, discriminator_model_output_shape[1], 2)
 print('---Train Discriminator Network 200 times---')
 synth_images = synth_images(imgdir,bs)
 real_images = real_images(imgdir,bs)
 
-DisNet = D()
+
 optimizer_dis = optim.SGD(DisNet.parameters(), lr=0.001)
 DisNet.to(device)
-running_loss = 0
 for _ in range(200):
     RefNet.eval()
     DisNet.train()
@@ -156,13 +172,13 @@ for _ in range(200):
     batch_from_buffer = torch.from_numpy(batch_from_buffer)
     ref_batch[:batch_size//2] = batch_from_buffer
 
-    D_real_out = DisNet(real_batch).view(-1,2)
-    D_loss_real = local_adv_loss(D_real_out, y_real)
+    D_real_out = DisNet(real_batch)#.view(-1,2)
+    D_loss_real = local_adv_loss(D_real_out, real_label(D_real_out))
 
-    D_ref_out = DisNet(ref_batch).view(-1,2)
-    D_loss_ref = local_adv_loss(D_ref_out, y_ref)
+    D_ref_out = DisNet(ref_batch)#.view(-1,2)
+    D_loss_ref = local_adv_loss(D_ref_out, fake_label(D_ref_out))
 
-    D_loss = D_loss_ref + D_loss_real
+    D_loss = (D_loss_ref.item() + D_loss_real.item())
     D_loss.backward()
     optimizer_dis.step()
 
@@ -171,12 +187,11 @@ for _ in range(200):
     if i % 10:
         print('Dis loss:{} ,Epochs:{} '.format(running_loss, i))
 
-K_g =
-K_d =
 
 
 for i in range(T):
-
+    R_loss, D_loss = 0, 0
+    R_epoch_loss, D_epoch_loss = 0, 0
     for _ in range(K_g):
 
         synth_batch = iter(synth_images).next()
@@ -184,12 +199,19 @@ for i in range(T):
         RefNet.train()
         optimizer_ref.zero_grad()
         R_output = RefNet(synth_batch)
+        DisNet.eval()
+        D_real_out(R_output)
+
         add_to_buffer(R_output.cpu().data.numpy())
-        r_loss_ref = self_reg_loss(n, R_output, images)
-        r_loss_ref.backward()
+
+        r_loss_ref = self_reg_loss(n, R_output, synth_batch)
+        r_loss_realism = local_adv_loss(D_real_out, real_label(D_real_out))
+        R_loss = (r_loss_ref.item() + r_loss_realism.item())
+        R_epoch_loss += R_loss
+        R_loss.backward()
         optimizer_ref.step()
 
-        running_loss += loss.item()
+
 
     for _ in range(K_d):
 
@@ -207,17 +229,38 @@ for i in range(T):
         batch_from_buffer = torch.from_numpy(batch_from_buffer)
         ref_batch[:bs//2] = batch_from_buffer
 
-        D_real_out = DisNet(real_batch).view(-1,2)
-        D_loss_real = local_adv_loss(D_real_out, y_real)
+        D_real_out = DisNet(real_batch)#.view(-1,2)
+        D_loss_real = local_adv_loss(D_real_out, real_label(D_real_out))
 
-        D_ref_out = DisNet(ref_batch).view(-1,2)
-        D_loss_ref = local_adv_loss(ref_batch, y_ref)
-        D_loss = D_loss_ref + D_loss_real
+        D_ref_out = DisNet(ref_batch)#.view(-1,2)
+        D_loss_ref = local_adv_loss(D_ref_out, fake_label(D_ref_out))
+        D_loss = (D_loss_ref.item() + D_loss_real.item())
+        D_epoch_loss += D_loss
         D_loss.backward()
         optimizer_dis.step()
 
+    if i % log_interval:
+        print('Refiner model loss: {}.'.format(R_epoch_loss / K_g))
+        print('Discriminator model loss: {}.'.format(D_epoch_loss / K_d))
+        #print('Discriminator model loss refined: {}.'.format(D_loss_ref))
 
-
+        fig = plt.figure(figsize=(55,35))
+        rows = 2
+        columns = 10
+        syn_imgs = ref_batch[train_bs//2:train_bs//2+10]
+        syn_imgs = syn_imgs.permute(0,2,3,1).cpu().data.numpy()
+        ref_imgs = R_output[bs//2:bs//2+10]
+        ref_imgs = ref_imgs.permute(0,2,3,1).cpu().data.numpy()
+        for i in range(10):
+            syn = syn_imgs[i]
+            ref = ref_imgs[i]
+            ax = plt.subplot(rows, columns,i+1)
+            ax.imshow(syn)
+            ax.axis('off')
+            ax = plt.subplot(rows, columns, i+11)
+            ax.imshow(ref)
+            ax.axis('off')
+        plt.show()
 
 img_path='mynumber.png'
 image=Image.open(img_path)
