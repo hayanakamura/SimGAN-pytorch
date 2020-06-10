@@ -9,13 +9,18 @@ from torchvision import datasets, models, transforms
 import torch.optim as optim
 from PIL import Image
 #from dataset import synth_images, real_images
-#from loss_func import self_reg_loss, local_adv_loss
+from loss_func import *
+from dataset import *
+from buffer import *
 
 import numpy as np
 
 #from dlutils import plot_image_batch_w_labels
 
 #from utils.image_history_buffer import ImageHistoryBuffer
+
+syn_dir = 'gaze.h5'
+real_dir = 'real_gaze.h5'
 
 # image dimensions
 img_width = 55
@@ -24,12 +29,12 @@ img_channels = 1
 
 # training params
 nb_steps = 10000
-batch_size = 512
+bs = 256
 k_d = 1  # number of discriminator updates per step
 k_g = 2  # number of generative network updates per step
 log_interval = 100
 
-
+n=0.01
 
 
 class R(nn.Module):
@@ -78,7 +83,7 @@ class D(nn.Module):
         self.conv3 = nn.Conv2d(64, 32, 3, stride=1, padding=1)
         self.conv4 = nn.Conv2d(32, 32, 1, stride=1, padding=1)
         self.conv5 = nn.Conv2d(32, 2, 1, stride=1, padding=1)
-        self.softmax = nn.Softmax()
+        self.softmax = nn.Softmax(dim=2)
 
     def forward(self,x):
         x = self.conv1(x)
@@ -103,17 +108,22 @@ dis_loss=[]
 
 
 print('---Train Refiner Network 1000 times---')
-synth_images = synth_images(imgdir,bs)
+synth_images = synth_images(syn_dir,bs)
+real_images = real_images(real_dir,bs)
+
+
 
 RefNet = R()
 DisNet = D()
-
-optimizer_ref = optim.SGD(RefNet.parameters(), lr=0.001)
 RefNet.to(device)
 DisNet.to(device)
+
+optimizer_ref = optim.SGD(RefNet.parameters(), lr=0.001)
+
 running_loss = 0
 R_loss = 0
 D_loss = 0
+
 for i in range(1000):
     synth_batch = iter(synth_images).next()
     synth_batch = synth_batch.to(device)
@@ -126,7 +136,8 @@ for i in range(1000):
         add_to_buffer(R_output.cpu().data.numpy())
     r_loss_ref = self_reg_loss(n, R_output, synth_batch)
     r_loss_realism = local_adv_loss(D_real_out, real_label(D_real_out))
-
+    print(r_loss_ref)
+    print(r_loss_realism)
     R_loss = (r_loss_ref.item() + r_loss_realism.item())
 
     R_loss.backward()
@@ -147,8 +158,6 @@ for i in range(1000):
 
 assert y_real.shape == (batch_size, discriminator_model_output_shape[1], 2)
 print('---Train Discriminator Network 200 times---')
-synth_images = synth_images(imgdir,bs)
-real_images = real_images(imgdir,bs)
 
 
 optimizer_dis = optim.SGD(DisNet.parameters(), lr=0.001)
@@ -261,19 +270,3 @@ for i in range(T):
             ax.imshow(ref)
             ax.axis('off')
         plt.show()
-
-img_path='mynumber.png'
-image=Image.open(img_path)
-tfms=transforms.Compose([transforms.Grayscale(),
-                        transforms.RandomResizedCrop((55,35))
-                        ])
-image=tfms(image)
-imnp=np.array(image)
-image=torch.from_numpy(imnp)
-image=torch.reshape(image,(1,1,55,35))
-
-print(image.size())
-image=image.float()
-net=resnet_block()
-out=refiner_network(net,image)
-print(out.size())
