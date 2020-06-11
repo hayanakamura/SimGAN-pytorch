@@ -11,7 +11,7 @@ from PIL import Image
 #from dataset import synth_images, real_images
 from loss_func import *
 from dataset import *
-from buffer import *
+from buffer import Buffer
 
 import numpy as np
 
@@ -30,11 +30,12 @@ img_channels = 1
 # training params
 nb_steps = 10000
 bs = 256
-k_d = 1  # number of discriminator updates per step
-k_g = 2  # number of generative network updates per step
+K_d = 1  # number of discriminator updates per step
+K_g = 2  # number of generative network updates per step
 log_interval = 100
 
 n=0.01
+Buffer = Buffer()
 
 
 class R(nn.Module):
@@ -124,7 +125,7 @@ running_loss = 0
 R_loss = 0
 D_loss = 0
 
-for i in range(1000):
+for i in range(50):
     synth_batch = iter(synth_images).next()
     synth_batch = synth_batch.to(device)
     RefNet.train()
@@ -132,37 +133,35 @@ for i in range(1000):
     R_output = RefNet(synth_batch)
     DisNet.eval()
     D_real_out = DisNet(R_output)
-    if i > 900:
-        add_to_buffer(R_output.cpu().data.numpy())
+    if i > 10:
+        Buffer.add_to_buffer(R_output.cpu().data.numpy())
     r_loss_ref = self_reg_loss(n, R_output, synth_batch)
     r_loss_realism = local_adv_loss(D_real_out, real_label(D_real_out))
     print(r_loss_ref)
     print(r_loss_realism)
-    R_loss = (r_loss_ref.item() + r_loss_realism.item())
-
+    R_loss = (r_loss_ref + r_loss_realism)
+    print(R_loss)
     R_loss.backward()
     optimizer_ref.step()
 
-
-
-
-
-
-    running_loss += loss.item()
+    running_loss += R_loss.item()
 #    ref_loss.append(running_loss)
-    if i % 50:
-        print('Ref loss:{} ,Epochs:{} '.format(running_loss, i))
+    if i % 10==0:
+        print('Ref loss:{} ,Epochs:{} '.format(running_loss/(i+1), i+1))
 
 
 
 
-assert y_real.shape == (batch_size, discriminator_model_output_shape[1], 2)
+
+#assert y_real.shape == (batch_size, discriminator_model_output_shape[1], 2)
 print('---Train Discriminator Network 200 times---')
 
 
 optimizer_dis = optim.SGD(DisNet.parameters(), lr=0.001)
 DisNet.to(device)
-for _ in range(200):
+running_loss = 0
+
+for _ in range(20):
     RefNet.eval()
     DisNet.train()
     optimizer_dis.zero_grad()
@@ -176,10 +175,9 @@ for _ in range(200):
     real_batch = real_batch.to(device)
 
     ref_batch = RefNet(synth_batch)
-
-    batch_from_buffer = get_from_buffer()
+    batch_from_buffer = Buffer.get_from_buffer()
     batch_from_buffer = torch.from_numpy(batch_from_buffer)
-    ref_batch[:batch_size//2] = batch_from_buffer
+    ref_batch[:bs//2] = batch_from_buffer
 
     D_real_out = DisNet(real_batch)#.view(-1,2)
     D_loss_real = local_adv_loss(D_real_out, real_label(D_real_out))
@@ -187,16 +185,17 @@ for _ in range(200):
     D_ref_out = DisNet(ref_batch)#.view(-1,2)
     D_loss_ref = local_adv_loss(D_ref_out, fake_label(D_ref_out))
 
-    D_loss = (D_loss_ref.item() + D_loss_real.item())
+    D_loss = (D_loss_ref + D_loss_real)
     D_loss.backward()
     optimizer_dis.step()
 
-    running_loss += loss.item()
+    running_loss += D_loss.item()
 #    dis_loss.append(running_loss)
-    if i % 10:
-        print('Dis loss:{} ,Epochs:{} '.format(running_loss, i))
+    if i % 2==0:
+        print('Dis loss:{} ,Epochs:{} '.format(running_loss/(i+1), i+1))
 
 
+T=5
 
 for i in range(T):
     R_loss, D_loss = 0, 0
@@ -211,12 +210,12 @@ for i in range(T):
         DisNet.eval()
         D_real_out(R_output)
 
-        add_to_buffer(R_output.cpu().data.numpy())
+        Buffer.add_to_buffer(R_output.cpu().data.numpy())
 
         r_loss_ref = self_reg_loss(n, R_output, synth_batch)
         r_loss_realism = local_adv_loss(D_real_out, real_label(D_real_out))
-        R_loss = (r_loss_ref.item() + r_loss_realism.item())
-        R_epoch_loss += R_loss
+        R_loss = (r_loss_ref + r_loss_realism)
+        R_epoch_loss += R_loss.item()
         R_loss.backward()
         optimizer_ref.step()
 
@@ -232,8 +231,8 @@ for i in range(T):
         Refnet.eval()
         ref_batch = RefNet(synth_batch)
 
-        batch_from_buffer = get_from_buffer()
-        add_to_buffer(synth_batch.cpu().data.numpy())
+        batch_from_buffer = Buffer().get_from_buffer()
+        Buffer.add_to_buffer(synth_batch.cpu().data.numpy())
         #numpy <--> torch.tensor
         batch_from_buffer = torch.from_numpy(batch_from_buffer)
         ref_batch[:bs//2] = batch_from_buffer
@@ -243,8 +242,8 @@ for i in range(T):
 
         D_ref_out = DisNet(ref_batch)#.view(-1,2)
         D_loss_ref = local_adv_loss(D_ref_out, fake_label(D_ref_out))
-        D_loss = (D_loss_ref.item() + D_loss_real.item())
-        D_epoch_loss += D_loss
+        D_loss = (D_loss_ref + D_loss_real)
+        D_epoch_loss += D_loss.item()
         D_loss.backward()
         optimizer_dis.step()
 
